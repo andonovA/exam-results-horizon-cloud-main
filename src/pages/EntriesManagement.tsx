@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Plus, Users, FileText, Copy, Search, Filter } from "lucide-react";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { ArrowLeft, Plus, Users, FileText, Copy, Search, Filter, Award } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,7 +60,13 @@ const EntriesManagement = () => {
       optionTitle: "Paper 1 Higher",
       pupilsCount: 4,
       pupilIds: [1, 2, 3, 4],
-      status: "Active"
+      status: "Active",
+      results: {
+        1: { grade: "7", points: 7, status: "Validated" },
+        2: { grade: "8", points: 8, status: "Validated" },
+        3: { grade: "6", points: 6, status: "Pending Review" },
+        4: { grade: "9", points: 9, status: "Validated" }
+      }
     },
     {
       id: 2,
@@ -68,7 +75,24 @@ const EntriesManagement = () => {
       optionTitle: "Paper 1",
       pupilsCount: 3,
       pupilIds: [2, 3, 4],
-      status: "Active"
+      status: "Active",
+      results: {
+        2: { grade: "6", points: 6, status: "Validated" },
+        3: { grade: "7", points: 7, status: "Validated" },
+        4: { grade: "8", points: 8, status: "Pending Review" }
+      }
+    },
+    {
+      id: 3,
+      syllabusCode: "8300",
+      type: "placeholder",
+      status: "Placeholder",
+      options: [
+        { id: 1, code: "8300/1H", title: "Paper 1 Higher" },
+        { id: 2, code: "8300/2H", title: "Paper 2 Higher" },
+        { id: 3, code: "8300/3H", title: "Paper 3 Higher" }
+      ],
+      usedOptions: []
     }
   ]);
 
@@ -95,6 +119,15 @@ const EntriesManagement = () => {
   const [viewDetailsEntry, setViewDetailsEntry] = useState<number | null>(null);
   const [entrySearchTerm, setEntrySearchTerm] = useState("");
   const [entryFilterSyllabus, setEntryFilterSyllabus] = useState<string>("all");
+  const [placeholderDialogOpen, setPlaceholderDialogOpen] = useState(false);
+  const [selectedPlaceholder, setSelectedPlaceholder] = useState<any>(null);
+  const [placeholderEntries, setPlaceholderEntries] = useState<Record<number, {
+    optionId: number;
+    pupilIds: number[];
+    selectionMode: "specific" | "year" | "regGroup";
+    selectedYear?: string;
+    selectedRegGroup?: string;
+  }>>({});
 
   const [newSyllabus, setNewSyllabus] = useState({
     code: "",
@@ -169,6 +202,12 @@ const EntriesManagement = () => {
     const syllabus = syllabuses.find(s => s.code === selectedSyllabus);
     const option = syllabus?.options.find(o => o.code === selectedOption);
 
+    // Initialize empty results for all pupils
+    const initialResults: Record<number, { grade: string; points: number; status: string }> = {};
+    pupilsToAdd.forEach(pupilId => {
+      initialResults[pupilId] = { grade: "", points: 0, status: "Pending" };
+    });
+
     const entry = {
       id: entries.length + 1,
       syllabusCode: selectedSyllabus,
@@ -176,10 +215,11 @@ const EntriesManagement = () => {
       optionTitle: option?.title || "",
       pupilsCount: pupilsCount,
       pupilIds: pupilsToAdd,
-      status: "Active"
+      status: "Active",
+      results: initialResults
     };
 
-    setEntries([...entries, entry]);
+    setEntries([...entries, entry] as any);
     setSelectedSyllabus("");
     setSelectedOption("");
     setSelectedPupils([]);
@@ -283,6 +323,191 @@ const EntriesManagement = () => {
         ? prev.filter(id => id !== pupilId)
         : [...prev, pupilId]
     );
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "Validated":
+        return "bg-green-100 text-green-800 border-green-200";
+      case "Pending Review":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      case "Pending":
+        return "bg-gray-100 text-gray-800 border-gray-200";
+      case "Conflict":
+        return "bg-red-100 text-red-800 border-red-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
+  };
+
+  const getGradeColor = (grade: string) => {
+    // Handle numeric grades (1-9 scale)
+    const numGrade = parseInt(grade);
+    if (!isNaN(numGrade)) {
+      if (numGrade >= 8) return "bg-blue-100 text-blue-800 border-blue-200";
+      if (numGrade >= 6) return "bg-green-100 text-green-800 border-green-200";
+      if (numGrade >= 4) return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      return "bg-red-100 text-red-800 border-red-200";
+    }
+    // Handle letter grades (A*, A, B, etc.)
+    const upperGrade = grade.toUpperCase();
+    if (upperGrade.includes("A*") || upperGrade === "A*") return "bg-blue-100 text-blue-800 border-blue-200";
+    if (upperGrade === "A") return "bg-green-100 text-green-800 border-green-200";
+    if (upperGrade === "B") return "bg-yellow-100 text-yellow-800 border-yellow-200";
+    if (upperGrade === "C" || upperGrade === "D") return "bg-orange-100 text-orange-800 border-orange-200";
+    return "bg-red-100 text-red-800 border-red-200";
+  };
+
+  const handleOpenPlaceholderDialog = (placeholder: any) => {
+    setSelectedPlaceholder(placeholder);
+    // Initialize placeholder entries for each option
+    const initialEntries: Record<number, {
+      optionId: number;
+      pupilIds: number[];
+      selectionMode: "specific" | "year" | "regGroup";
+      selectedYear?: string;
+      selectedRegGroup?: string;
+    }> = {};
+    
+    placeholder.options.forEach((option: any) => {
+      if (!placeholder.usedOptions?.includes(option.id)) {
+        initialEntries[option.id] = {
+          optionId: option.id,
+          pupilIds: [],
+          selectionMode: "specific"
+        };
+      }
+    });
+    
+    setPlaceholderEntries(initialEntries);
+    setPlaceholderDialogOpen(true);
+  };
+
+  const handleCreateEntriesFromPlaceholder = () => {
+    if (!selectedPlaceholder) return;
+
+    const newEntries: any[] = [];
+    const usedOptionIds: number[] = [];
+    let hasErrors = false;
+
+    Object.values(placeholderEntries).forEach((entryData) => {
+      let pupilsToAdd: number[] = [];
+      let pupilsCount = 0;
+
+      if (entryData.selectionMode === "specific") {
+        if (entryData.pupilIds.length === 0) {
+          toast({
+            title: "Error",
+            description: `Please select pupils for option ${entryData.optionId}`,
+            variant: "destructive"
+          });
+          hasErrors = true;
+          return;
+        }
+        pupilsToAdd = entryData.pupilIds;
+        pupilsCount = entryData.pupilIds.length;
+      } else if (entryData.selectionMode === "year") {
+        if (!entryData.selectedYear) {
+          toast({
+            title: "Error",
+            description: `Please select a year group for option ${entryData.optionId}`,
+            variant: "destructive"
+          });
+          hasErrors = true;
+          return;
+        }
+        pupilsToAdd = pupils.filter(p => p.year === entryData.selectedYear).map(p => p.id);
+        pupilsCount = pupilsToAdd.length;
+      } else if (entryData.selectionMode === "regGroup") {
+        if (!entryData.selectedRegGroup) {
+          toast({
+            title: "Error",
+            description: `Please select a reg group for option ${entryData.optionId}`,
+            variant: "destructive"
+          });
+          hasErrors = true;
+          return;
+        }
+        pupilsToAdd = pupils.filter(p => p.regGroup === entryData.selectedRegGroup).map(p => p.id);
+        pupilsCount = pupilsToAdd.length;
+      }
+
+      if (pupilsCount === 0) {
+        toast({
+          title: "Error",
+          description: `No pupils selected for option ${entryData.optionId}`,
+          variant: "destructive"
+        });
+        hasErrors = true;
+        return;
+      }
+
+      const option = selectedPlaceholder.options.find((opt: any) => opt.id === entryData.optionId);
+      if (!option) {
+        hasErrors = true;
+        return;
+      }
+
+      // Initialize empty results for all pupils
+      const initialResults: Record<number, { grade: string; points: number; status: string }> = {};
+      pupilsToAdd.forEach(pupilId => {
+        initialResults[pupilId] = { grade: "", points: 0, status: "Pending" };
+      });
+
+      const newEntry = {
+        id: entries.length + newEntries.length + 1,
+        syllabusCode: selectedPlaceholder.syllabusCode,
+        optionCode: option.code,
+        optionTitle: option.title,
+        pupilsCount: pupilsCount,
+        pupilIds: pupilsToAdd,
+        status: "Active",
+        results: initialResults
+      };
+
+      newEntries.push(newEntry);
+      usedOptionIds.push(entryData.optionId);
+    });
+
+    if (hasErrors || newEntries.length === 0) {
+      return;
+    }
+
+    // Update entries
+    setEntries(prevEntries => {
+      const updatedEntries = prevEntries.map((entry: any) => {
+        if (entry.id === selectedPlaceholder.id && entry.type === "placeholder") {
+          return {
+            ...entry,
+            usedOptions: [...(entry.usedOptions || []), ...usedOptionIds]
+          };
+        }
+        return entry;
+      });
+      return [...updatedEntries, ...newEntries] as any;
+    });
+
+    // Remove placeholder if all options are used
+    setEntries(prevEntries => {
+      return prevEntries.filter((entry: any) => {
+        if (entry.type === "placeholder" && entry.id === selectedPlaceholder.id) {
+          const remainingOptions = entry.options.filter((opt: any) => 
+            !entry.usedOptions?.includes(opt.id)
+          );
+          return remainingOptions.length > 0;
+        }
+        return true;
+      });
+    });
+
+    setPlaceholderDialogOpen(false);
+    setSelectedPlaceholder(null);
+    setPlaceholderEntries({});
+
+    toast({
+      title: "Success",
+      description: `Created ${newEntries.length} entry/entries successfully`
+    });
   };
 
   return (
@@ -622,85 +847,6 @@ const EntriesManagement = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Total Entries</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{entries.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Total Syllabuses</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">{syllabuses.length}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Total Pupils</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-3xl font-bold">
-                {entries.reduce((sum, entry) => sum + entry.pupilsCount, 0)}
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-5 w-5" />
-              Available Syllabuses
-            </CardTitle>
-            <CardDescription>Syllabuses available for this series</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {syllabuses.length === 0 ? (
-              <div className="text-center py-8 text-muted-foreground">
-                <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p className="font-medium">No syllabuses configured</p>
-                <p className="text-sm mt-1">
-                  {seriesData.type === "Internal" 
-                    ? "Create a syllabus to get started" 
-                    : "Syllabuses will appear here once configured"}
-                </p>
-              </div>
-            ) : (
-              <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Code</TableHead>
-                  <TableHead>Title</TableHead>
-                  <TableHead>Level</TableHead>
-                  <TableHead>Options</TableHead>
-                  <TableHead>Total Entries</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {syllabuses.map((syllabus) => (
-                  <TableRow key={syllabus.id}>
-                    <TableCell className="font-mono font-medium">{syllabus.code}</TableCell>
-                    <TableCell>{syllabus.title}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{syllabus.level}</Badge>
-                    </TableCell>
-                    <TableCell>{syllabus.options.length}</TableCell>
-                    <TableCell>
-                      {syllabus.options.reduce((sum, opt) => sum + opt.entries, 0)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-            )}
-          </CardContent>
-        </Card>
-
         <Card>
           <CardHeader>
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
@@ -741,9 +887,14 @@ const EntriesManagement = () => {
           <CardContent>
             {(() => {
               const filteredEntries = entries.filter(entry => {
+                if (entry.type === "placeholder") {
+                  const matchesSearch = entry.syllabusCode.toLowerCase().includes(entrySearchTerm.toLowerCase());
+                  const matchesSyllabus = entryFilterSyllabus === "all" || entry.syllabusCode === entryFilterSyllabus;
+                  return matchesSearch && matchesSyllabus;
+                }
                 const matchesSearch = entry.syllabusCode.toLowerCase().includes(entrySearchTerm.toLowerCase()) ||
-                                     entry.optionCode.toLowerCase().includes(entrySearchTerm.toLowerCase()) ||
-                                     entry.optionTitle.toLowerCase().includes(entrySearchTerm.toLowerCase());
+                                     entry.optionCode?.toLowerCase().includes(entrySearchTerm.toLowerCase()) ||
+                                     entry.optionTitle?.toLowerCase().includes(entrySearchTerm.toLowerCase());
                 const matchesSyllabus = entryFilterSyllabus === "all" || entry.syllabusCode === entryFilterSyllabus;
                 return matchesSearch && matchesSyllabus;
               });
@@ -771,36 +922,81 @@ const EntriesManagement = () => {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredEntries.map((entry) => (
-                      <TableRow key={entry.id}>
-                        <TableCell className="font-mono">{entry.syllabusCode}</TableCell>
-                        <TableCell className="font-mono">{entry.optionCode}</TableCell>
-                        <TableCell>{entry.optionTitle}</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4" />
-                            {entry.pupilsCount}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="default">{entry.status}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex gap-2">
-                            <Button size="sm" variant="outline">
-                              Edit Pupils
-                            </Button>
-                            <Button 
-                              size="sm" 
-                              variant="ghost"
-                              onClick={() => setViewDetailsEntry(entry.id)}
-                            >
-                              View Details
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {filteredEntries.map((entry) => {
+                      if (entry.type === "placeholder") {
+                        const remainingOptions = entry.options.filter((opt: any) => 
+                          !entry.usedOptions?.includes(opt.id)
+                        );
+                        const syllabus = syllabuses.find(s => s.code === entry.syllabusCode);
+                        return (
+                          <TableRow key={entry.id} className="bg-yellow-50/50">
+                            <TableCell className="font-mono">{entry.syllabusCode}</TableCell>
+                            <TableCell className="font-mono italic text-muted-foreground">
+                              Placeholder
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex flex-col gap-1">
+                                <span className="font-medium">{syllabus?.title || entry.syllabusCode}</span>
+                                <span className="text-xs text-muted-foreground">
+                                  {remainingOptions.length} option{remainingOptions.length !== 1 ? 's' : ''} available
+                                </span>
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="flex items-center gap-2 text-muted-foreground">
+                                <Users className="h-4 w-4" />
+                                -
+                              </div>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                                Placeholder
+                              </Badge>
+                            </TableCell>
+                            <TableCell>
+                              <Button 
+                                size="sm" 
+                                onClick={() => handleOpenPlaceholderDialog(entry)}
+                                className="flex items-center gap-2"
+                              >
+                                <Plus className="h-4 w-4" />
+                                Create Entries
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      }
+                      return (
+                        <TableRow key={entry.id}>
+                          <TableCell className="font-mono">{entry.syllabusCode}</TableCell>
+                          <TableCell className="font-mono">{entry.optionCode}</TableCell>
+                          <TableCell>{entry.optionTitle}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Users className="h-4 w-4" />
+                              {entry.pupilsCount}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="default">{entry.status}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex gap-2">
+                              <Button size="sm" variant="outline">
+                                Edit Pupils
+                              </Button>
+                              <Button 
+                                size="sm" 
+                                variant="ghost"
+                                onClick={() => setViewDetailsEntry(entry.id)}
+                              >
+                                View Details
+                              </Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               );
@@ -927,10 +1123,271 @@ const EntriesManagement = () => {
                         )}
                       </CardContent>
                     </Card>
+
+                    {/* Results Section */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <Award className="h-5 w-5" />
+                          Results ({entryPupils.length})
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {entryPupils.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            No pupils assigned to this entry
+                          </div>
+                        ) : (
+                          <div className="border rounded-lg">
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Pupil Name</TableHead>
+                                  <TableHead>Grade</TableHead>
+                                  <TableHead>Points</TableHead>
+                                  <TableHead>Status</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {entryPupils.map((pupil) => {
+                                  const result = entry.results?.[pupil.id];
+                                  return (
+                                    <TableRow key={pupil.id}>
+                                      <TableCell className="font-medium">{pupil.name}</TableCell>
+                                      <TableCell>
+                                        {result?.grade ? (
+                                          <Badge className={getGradeColor(result.grade)} variant="outline">
+                                            {result.grade}
+                                          </Badge>
+                                        ) : (
+                                          <span className="text-muted-foreground">-</span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell>
+                                        {result?.points !== undefined && result.points > 0 ? (
+                                          <span className="font-medium">{result.points}</span>
+                                        ) : (
+                                          <span className="text-muted-foreground">-</span>
+                                        )}
+                                      </TableCell>
+                                      <TableCell>
+                                        {result?.status ? (
+                                          <Badge className={getStatusColor(result.status)} variant="outline">
+                                            {result.status}
+                                          </Badge>
+                                        ) : (
+                                          <Badge className={getStatusColor("Pending")} variant="outline">
+                                            Pending
+                                          </Badge>
+                                        )}
+                                      </TableCell>
+                                    </TableRow>
+                                  );
+                                })}
+                              </TableBody>
+                            </Table>
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
                   </div>
                 </>
               );
             })()}
+          </DialogContent>
+        </Dialog>
+
+        {/* Placeholder Dialog */}
+        <Dialog open={placeholderDialogOpen} onOpenChange={setPlaceholderDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Create Entries from Placeholder</DialogTitle>
+              <DialogDescription>
+                Select pupils for each option to create entries
+              </DialogDescription>
+            </DialogHeader>
+
+            {selectedPlaceholder && (
+              <div className="mt-4">
+                <Accordion type="multiple" className="w-full">
+                  {selectedPlaceholder.options
+                    .filter((opt: any) => !selectedPlaceholder.usedOptions?.includes(opt.id))
+                    .map((option: any) => {
+                      const entryData = placeholderEntries[option.id];
+                      if (!entryData) return null;
+
+                      return (
+                        <AccordionItem key={option.id} value={`option-${option.id}`} className="border rounded-lg mb-2 px-4">
+                          <AccordionTrigger className="hover:no-underline">
+                            <div className="flex items-center justify-between w-full pr-4">
+                              <div className="text-left">
+                                <div className="font-semibold text-base">
+                                  {option.code} - {option.title}
+                                </div>
+                                {entryData.selectionMode === "specific" && entryData.pupilIds.length > 0 && (
+                                  <div className="text-sm text-muted-foreground mt-1">
+                                    {entryData.pupilIds.length} pupil{entryData.pupilIds.length !== 1 ? 's' : ''} selected
+                                  </div>
+                                )}
+                                {entryData.selectionMode === "year" && entryData.selectedYear && (
+                                  <div className="text-sm text-muted-foreground mt-1">
+                                    Year {entryData.selectedYear} selected
+                                  </div>
+                                )}
+                                {entryData.selectionMode === "regGroup" && entryData.selectedRegGroup && (
+                                  <div className="text-sm text-muted-foreground mt-1">
+                                    {entryData.selectedRegGroup} selected
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </AccordionTrigger>
+                          <AccordionContent>
+                            <div className="space-y-4 pt-2 pb-4">
+                          <div>
+                            <Label className="text-base mb-3 block">Selection Method</Label>
+                            <Select 
+                              value={entryData.selectionMode} 
+                              onValueChange={(value: "specific" | "year" | "regGroup") => {
+                                setPlaceholderEntries(prev => ({
+                                  ...prev,
+                                  [option.id]: {
+                                    ...entryData,
+                                    selectionMode: value,
+                                    pupilIds: [],
+                                    selectedYear: "",
+                                    selectedRegGroup: ""
+                                  }
+                                }));
+                              }}
+                            >
+                              <SelectTrigger>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="specific">Specific Pupils</SelectItem>
+                                <SelectItem value="year">Whole Year Group</SelectItem>
+                                <SelectItem value="regGroup">Whole Reg Group</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {entryData.selectionMode === "specific" && (
+                            <div>
+                              <Label className="text-base mb-3 block">
+                                Select Pupils ({entryData.pupilIds.length} selected)
+                              </Label>
+                              <div className="space-y-2 max-h-64 overflow-y-auto border rounded p-2">
+                                {pupils.map((pupil) => (
+                                  <div key={pupil.id} className="flex items-center space-x-2 p-2 hover:bg-muted rounded">
+                                    <Checkbox
+                                      id={`placeholder-pupil-${option.id}-${pupil.id}`}
+                                      checked={entryData.pupilIds.includes(pupil.id)}
+                                      onCheckedChange={(checked) => {
+                                        setPlaceholderEntries(prev => ({
+                                          ...prev,
+                                          [option.id]: {
+                                            ...entryData,
+                                            pupilIds: checked
+                                              ? [...entryData.pupilIds, pupil.id]
+                                              : entryData.pupilIds.filter(id => id !== pupil.id)
+                                          }
+                                        }));
+                                      }}
+                                    />
+                                    <label
+                                      htmlFor={`placeholder-pupil-${option.id}-${pupil.id}`}
+                                      className="flex-1 cursor-pointer"
+                                    >
+                                      <div className="font-medium">{pupil.name}</div>
+                                      <div className="text-sm text-muted-foreground">
+                                        Year {pupil.year} - Reg: {pupil.regGroup}
+                                      </div>
+                                    </label>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {entryData.selectionMode === "year" && (
+                            <div>
+                              <Label className="text-base mb-3 block">Select Year Group</Label>
+                              <Select 
+                                value={entryData.selectedYear || ""} 
+                                onValueChange={(value) => {
+                                  setPlaceholderEntries(prev => ({
+                                    ...prev,
+                                    [option.id]: {
+                                      ...entryData,
+                                      selectedYear: value
+                                    }
+                                  }));
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select year group" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Array.from(new Set(pupils.map(p => p.year))).sort().map(year => (
+                                    <SelectItem key={year} value={year}>
+                                      Year {year} ({pupils.filter(p => p.year === year).length} pupils)
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+
+                          {entryData.selectionMode === "regGroup" && (
+                            <div>
+                              <Label className="text-base mb-3 block">Select Reg Group</Label>
+                              <Select 
+                                value={entryData.selectedRegGroup || ""} 
+                                onValueChange={(value) => {
+                                  setPlaceholderEntries(prev => ({
+                                    ...prev,
+                                    [option.id]: {
+                                      ...entryData,
+                                      selectedRegGroup: value
+                                    }
+                                  }));
+                                }}
+                              >
+                                <SelectTrigger>
+                                  <SelectValue placeholder="Select reg group" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {Array.from(new Set(pupils.map(p => p.regGroup))).sort().map(regGroup => (
+                                    <SelectItem key={regGroup} value={regGroup}>
+                                      {regGroup} ({pupils.filter(p => p.regGroup === regGroup).length} pupils)
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </div>
+                          )}
+                            </div>
+                          </AccordionContent>
+                        </AccordionItem>
+                      );
+                    })}
+                </Accordion>
+
+                <div className="flex justify-end gap-2 pt-6 mt-4 border-t">
+                  <Button variant="outline" onClick={() => {
+                    setPlaceholderDialogOpen(false);
+                    setSelectedPlaceholder(null);
+                    setPlaceholderEntries({});
+                  }}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleCreateEntriesFromPlaceholder}>
+                    Create Entries
+                  </Button>
+                </div>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

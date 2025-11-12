@@ -4,14 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { 
   Calendar, 
-  Users, 
   FileText, 
   Shield, 
-  TrendingUp,
   Menu,
   X,
-  User,
-  GraduationCap,
   Upload
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -23,13 +19,10 @@ const Navigation = () => {
 
   const navItems = [
     { name: "Dashboard", path: "/", icon: Calendar },
-    { name: "Course Management", path: "/course-management", icon: GraduationCap },
     { name: "Series Management", path: "/season-management", icon: Calendar },
-    { name: "Basedata Upload", path: "/basedata-upload", icon: Upload },
+    { name: "Center Specific Basedata", path: "/basedata-upload", icon: Upload },
     { name: "Results Management", path: "/results-management", icon: FileText },
-    { name: "Embargo Controls", path: "/embargo-management", icon: Shield },
-    { name: "Student Portal", path: "/student-portal", icon: User },
-    { name: "Analytics", path: "/analytics", icon: TrendingUp }
+    { name: "Embargo Controls", path: "/embargo-management", icon: Shield }
   ];
 
   const isActive = (path: string) => location.pathname === path;

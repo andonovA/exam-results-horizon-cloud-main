@@ -3,8 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Upload, FileText, ChevronDown, ChevronRight, Search, Filter } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Upload, FileText, ChevronDown, ChevronRight, Search, Filter, Plus, X, ChevronLeft } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -43,6 +45,38 @@ const BasedataUpload = () => {
   const [expandedSeries, setExpandedSeries] = useState<Set<number>>(new Set());
   const [expandedSyllabuses, setExpandedSyllabuses] = useState<Set<string>>(new Set());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Wizard state
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState(1);
+  const [selectedSeriesForWizard, setSelectedSeriesForWizard] = useState<string>("");
+  const [newSyllabus, setNewSyllabus] = useState({
+    code: "",
+    title: "",
+    organization: "",
+    level: "GCSE"
+  });
+  const [syllabusOptions, setSyllabusOptions] = useState<Array<{
+    code: string;
+    title: string;
+    examDate?: string;
+    examTime?: string;
+  }>>([]);
+  const [currentOption, setCurrentOption] = useState({
+    code: "",
+    title: "",
+    examDate: "",
+    examTime: ""
+  });
+  
+  // Create Season state
+  const [createSeasonDialogOpen, setCreateSeasonDialogOpen] = useState(false);
+  const [newSeason, setNewSeason] = useState({
+    name: "",
+    startDate: "",
+    endDate: "",
+    status: "Draft"
+  });
 
   // Mock data - in real app, this would be fetched from API
   const [series, setSeries] = useState<Series[]>([
@@ -233,6 +267,155 @@ const BasedataUpload = () => {
     )
   };
 
+  // Create Season handler
+  const handleCreateSeason = () => {
+    if (!newSeason.name || !newSeason.startDate || !newSeason.endDate) {
+      toast({
+        title: "Error",
+        description: "Please fill in all required fields",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const season: Series = {
+      id: series.length + 1,
+      name: newSeason.name,
+      type: "External",
+      status: newSeason.status,
+      startDate: newSeason.startDate,
+      endDate: newSeason.endDate,
+      syllabuses: []
+    };
+
+    setSeries([...series, season]);
+    setCreateSeasonDialogOpen(false);
+    setNewSeason({ name: "", startDate: "", endDate: "", status: "Draft" });
+    
+    toast({
+      title: "Success",
+      description: `Season "${newSeason.name}" created successfully`
+    });
+  };
+
+  // Wizard handlers
+  const handleOpenWizard = () => {
+    setWizardOpen(true);
+    setWizardStep(1);
+    setSelectedSeriesForWizard("");
+    setNewSyllabus({ code: "", title: "", organization: "", level: "GCSE" });
+    setSyllabusOptions([]);
+    setCurrentOption({ code: "", title: "", examDate: "", examTime: "" });
+  };
+
+  const handleCloseWizard = () => {
+    setWizardOpen(false);
+    setWizardStep(1);
+    setSelectedSeriesForWizard("");
+    setNewSyllabus({ code: "", title: "", organization: "", level: "GCSE" });
+    setSyllabusOptions([]);
+    setCurrentOption({ code: "", title: "", examDate: "", examTime: "" });
+  };
+
+  const handleNextStep = () => {
+    if (wizardStep === 1) {
+      if (!selectedSeriesForWizard) {
+        toast({
+          title: "Error",
+          description: "Please select a season",
+          variant: "destructive"
+        });
+        return;
+      }
+      setWizardStep(2);
+    } else if (wizardStep === 2) {
+      if (!newSyllabus.code || !newSyllabus.title || !newSyllabus.organization) {
+        toast({
+          title: "Error",
+          description: "Please fill in all syllabus fields",
+          variant: "destructive"
+        });
+        return;
+      }
+      setWizardStep(3);
+    } else if (wizardStep === 3) {
+      if (syllabusOptions.length === 0) {
+        toast({
+          title: "Error",
+          description: "Please add at least one option",
+          variant: "destructive"
+        });
+        return;
+      }
+      setWizardStep(4);
+    }
+  };
+
+  const handlePreviousStep = () => {
+    if (wizardStep > 1) {
+      setWizardStep(wizardStep - 1);
+    }
+  };
+
+  const handleAddOption = () => {
+    if (!currentOption.code || !currentOption.title) {
+      toast({
+        title: "Error",
+        description: "Please fill in option code and title",
+        variant: "destructive"
+      });
+      return;
+    }
+    setSyllabusOptions([...syllabusOptions, {
+      code: currentOption.code,
+      title: currentOption.title,
+      examDate: currentOption.examDate || undefined,
+      examTime: currentOption.examTime || undefined
+    }]);
+    setCurrentOption({ code: "", title: "", examDate: "", examTime: "" });
+  };
+
+  const handleRemoveOption = (index: number) => {
+    setSyllabusOptions(syllabusOptions.filter((_, i) => i !== index));
+  };
+
+  const handleFinishWizard = () => {
+    const selectedSeriesItem = series.find(s => s.id.toString() === selectedSeriesForWizard);
+    if (!selectedSeriesItem) return;
+
+    const syllabusToAdd: Syllabus = {
+      id: `${selectedSeriesItem.id}-${Date.now()}`,
+      code: newSyllabus.code,
+      title: newSyllabus.title,
+      organization: newSyllabus.organization,
+      level: newSyllabus.level,
+      options: syllabusOptions.map((opt, idx) => ({
+        optionId: `${selectedSeriesItem.id}-${Date.now()}-${idx}`,
+        optionCode: opt.code,
+        optionTitle: opt.title,
+        examDate: opt.examDate,
+        examTime: opt.examTime
+      }))
+    };
+
+    setSeries(prevSeries => prevSeries.map(s => {
+      if (s.id.toString() === selectedSeriesForWizard) {
+        return {
+          ...s,
+          syllabuses: [...s.syllabuses, syllabusToAdd]
+        };
+      }
+      return s;
+    }));
+
+    toast({
+      title: "Success",
+      description: `Syllabus "${newSyllabus.title}" with ${syllabusOptions.length} option(s) added to ${selectedSeriesItem.name}`
+    });
+
+    handleCloseWizard();
+  };
+
   return (
     <div className="min-h-screen bg-background">
       <Navigation />
@@ -242,9 +425,9 @@ const BasedataUpload = () => {
           {/* Header */}
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold tracking-tight">School Basedata Upload</h1>
+              <h1 className="text-3xl font-bold tracking-tight">Center Specific Basedata</h1>
               <p className="text-muted-foreground mt-1">
-                Upload and manage school-specific basedata for examination series
+                Upload and manage center-specific basedata for examination series
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -258,10 +441,26 @@ const BasedataUpload = () => {
               />
               <Button
                 onClick={() => document.getElementById("file-upload")?.click()}
+                variant="outline"
                 className="flex items-center gap-2"
               >
                 <Upload className="h-4 w-4" />
-                Upload Basedata
+                Upload Center Basedata
+              </Button>
+              <Button
+                onClick={() => setCreateSeasonDialogOpen(true)}
+                variant="outline"
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Create Season
+              </Button>
+              <Button
+                onClick={handleOpenWizard}
+                className="flex items-center gap-2"
+              >
+                <Plus className="h-4 w-4" />
+                Add Syllabus
               </Button>
             </div>
           </div>
@@ -442,6 +641,389 @@ const BasedataUpload = () => {
           </Card>
         </div>
       </div>
+
+      {/* Add Syllabus Wizard */}
+      <Dialog open={wizardOpen} onOpenChange={(open) => {
+        if (!open) {
+          handleCloseWizard();
+        }
+      }}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Add Syllabus Wizard
+            </DialogTitle>
+            <DialogDescription>
+              Step {wizardStep} of 4: {wizardStep === 1 && "Select Season"} 
+              {wizardStep === 2 && "Syllabus Details"} 
+              {wizardStep === 3 && "Add Options"} 
+              {wizardStep === 4 && "Review"}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-6 mt-4">
+            {/* Step 1: Select Season */}
+            {wizardStep === 1 && (
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="season">Select Season</Label>
+                  <Select value={selectedSeriesForWizard} onValueChange={setSelectedSeriesForWizard}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a season" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {series.map((s) => (
+                        <SelectItem key={s.id} value={s.id.toString()}>
+                          {s.name} ({s.type}) - {s.status}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {selectedSeriesForWizard && (
+                  <Card className="bg-muted/50">
+                    <CardContent className="pt-4">
+                      {(() => {
+                        const selected = series.find(s => s.id.toString() === selectedSeriesForWizard);
+                        if (!selected) return null;
+                        return (
+                          <div className="space-y-2 text-sm">
+                            <div><span className="font-medium">Name:</span> {selected.name}</div>
+                            <div><span className="font-medium">Type:</span> {selected.type}</div>
+                            <div><span className="font-medium">Status:</span> {selected.status}</div>
+                            <div><span className="font-medium">Dates:</span> {selected.startDate} to {selected.endDate}</div>
+                          </div>
+                        );
+                      })()}
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+            )}
+
+            {/* Step 2: Syllabus Details */}
+            {wizardStep === 2 && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="syllabusCode">Syllabus Code</Label>
+                    <Input
+                      id="syllabusCode"
+                      placeholder="e.g., CUSTOM-001"
+                      value={newSyllabus.code}
+                      onChange={(e) => setNewSyllabus({ ...newSyllabus, code: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="syllabusLevel">Level</Label>
+                    <Select value={newSyllabus.level} onValueChange={(value) => setNewSyllabus({ ...newSyllabus, level: value })}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="GCSE">GCSE</SelectItem>
+                        <SelectItem value="A Level">A Level</SelectItem>
+                        <SelectItem value="BTEC">BTEC</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="syllabusTitle">Syllabus Title</Label>
+                  <Input
+                    id="syllabusTitle"
+                    placeholder="e.g., Custom Mathematics Syllabus"
+                    value={newSyllabus.title}
+                    onChange={(e) => setNewSyllabus({ ...newSyllabus, title: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="syllabusOrg">Organization</Label>
+                  <Input
+                    id="syllabusOrg"
+                    placeholder="e.g., Center Name or Custom"
+                    value={newSyllabus.organization}
+                    onChange={(e) => setNewSyllabus({ ...newSyllabus, organization: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Step 3: Add Options */}
+            {wizardStep === 3 && (
+              <div className="space-y-4">
+                <div className="border rounded-lg p-4 bg-muted/50">
+                  <h3 className="font-semibold mb-3">Add Options</h3>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label htmlFor="optionCode">Option Code</Label>
+                      <Input
+                        id="optionCode"
+                        placeholder="e.g., CUSTOM-001/1"
+                        value={currentOption.code}
+                        onChange={(e) => setCurrentOption({ ...currentOption, code: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="optionTitle">Option Title</Label>
+                      <Input
+                        id="optionTitle"
+                        placeholder="e.g., Paper 1"
+                        value={currentOption.title}
+                        onChange={(e) => setCurrentOption({ ...currentOption, title: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <Label htmlFor="examDate">Exam Date (Optional)</Label>
+                      <Input
+                        id="examDate"
+                        type="date"
+                        value={currentOption.examDate}
+                        onChange={(e) => setCurrentOption({ ...currentOption, examDate: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="examTime">Exam Time (Optional)</Label>
+                      <Input
+                        id="examTime"
+                        type="time"
+                        value={currentOption.examTime}
+                        onChange={(e) => setCurrentOption({ ...currentOption, examTime: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <Button onClick={handleAddOption} className="w-full" variant="outline">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Option
+                  </Button>
+                </div>
+
+                {syllabusOptions.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Added Options ({syllabusOptions.length})</Label>
+                    <div className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Code</TableHead>
+                            <TableHead>Title</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Time</TableHead>
+                            <TableHead>Action</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {syllabusOptions.map((opt, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-mono text-sm">{opt.code}</TableCell>
+                              <TableCell>{opt.title}</TableCell>
+                              <TableCell>{opt.examDate || "—"}</TableCell>
+                              <TableCell>{opt.examTime || "—"}</TableCell>
+                              <TableCell>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => handleRemoveOption(idx)}
+                                >
+                                  <X className="h-4 w-4" />
+                                </Button>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Step 4: Review */}
+            {wizardStep === 4 && (
+              <div className="space-y-4">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Syllabus Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <Label className="text-sm text-muted-foreground">Syllabus Code</Label>
+                        <div className="font-mono font-medium">{newSyllabus.code}</div>
+                      </div>
+                      <div>
+                        <Label className="text-sm text-muted-foreground">Level</Label>
+                        <div>{newSyllabus.level}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-sm text-muted-foreground">Syllabus Title</Label>
+                        <div className="font-medium">{newSyllabus.title}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-sm text-muted-foreground">Organization</Label>
+                        <div>{newSyllabus.organization}</div>
+                      </div>
+                      <div className="col-span-2">
+                        <Label className="text-sm text-muted-foreground">Season</Label>
+                        <div>{series.find(s => s.id.toString() === selectedSeriesForWizard)?.name}</div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Options ({syllabusOptions.length})</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="border rounded-lg">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Code</TableHead>
+                            <TableHead>Title</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead>Time</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {syllabusOptions.map((opt, idx) => (
+                            <TableRow key={idx}>
+                              <TableCell className="font-mono text-sm">{opt.code}</TableCell>
+                              <TableCell>{opt.title}</TableCell>
+                              <TableCell>{opt.examDate || "—"}</TableCell>
+                              <TableCell>{opt.examTime || "—"}</TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
+            {/* Wizard Navigation */}
+            <div className="flex justify-between pt-4 border-t">
+              <Button
+                variant="outline"
+                onClick={wizardStep === 1 ? handleCloseWizard : handlePreviousStep}
+                className="flex items-center gap-2"
+              >
+                {wizardStep === 1 ? (
+                  <>
+                    <X className="h-4 w-4" />
+                    Cancel
+                  </>
+                ) : (
+                  <>
+                    <ChevronLeft className="h-4 w-4" />
+                    Previous
+                  </>
+                )}
+              </Button>
+              <div className="flex gap-2">
+                {wizardStep < 4 ? (
+                  <Button onClick={handleNextStep} className="flex items-center gap-2">
+                    Next
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                ) : (
+                  <Button onClick={handleFinishWizard} className="flex items-center gap-2">
+                    <FileText className="h-4 w-4" />
+                    Add Syllabus
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Season Dialog */}
+      <Dialog open={createSeasonDialogOpen} onOpenChange={setCreateSeasonDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-5 w-5" />
+              Create New Season
+            </DialogTitle>
+            <DialogDescription>
+              Create a new examination season to organize your syllabuses and entries
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 mt-4">
+            <div>
+              <Label htmlFor="seasonName">Season Name *</Label>
+              <Input
+                id="seasonName"
+                placeholder="e.g., Spring 2024, Summer 2024"
+                value={newSeason.name}
+                onChange={(e) => setNewSeason({ ...newSeason, name: e.target.value })}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="seasonStatus">Status *</Label>
+              <Select 
+                value={newSeason.status} 
+                onValueChange={(value) => setNewSeason({ ...newSeason, status: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Draft">Draft</SelectItem>
+                  <SelectItem value="Active">Active</SelectItem>
+                  <SelectItem value="Completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="startDate">Start Date *</Label>
+                <Input
+                  id="startDate"
+                  type="date"
+                  value={newSeason.startDate}
+                  onChange={(e) => setNewSeason({ ...newSeason, startDate: e.target.value })}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="endDate">End Date *</Label>
+                <Input
+                  id="endDate"
+                  type="date"
+                  value={newSeason.endDate}
+                  onChange={(e) => setNewSeason({ ...newSeason, endDate: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setCreateSeasonDialogOpen(false);
+                  setNewSeason({ name: "", startDate: "", endDate: "", status: "Draft" });
+                }}
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreateSeason}>
+                Create Season
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Calendar, Plus, FileText, ExternalLink, Wrench, Search, Filter, MoreVertical } from "lucide-react";
+import { Calendar, Plus, ExternalLink, Wrench, Search, Filter, MoreVertical } from "lucide-react";
 import Navigation from "@/components/Navigation";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -437,8 +437,6 @@ const SeasonManagement = () => {
                   <TableHead>Series Name</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Academic Year</TableHead>
-                  <TableHead>Syllabuses</TableHead>
-                  <TableHead>Entries</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -455,13 +453,6 @@ const SeasonManagement = () => {
                     <TableCell className="text-sm text-muted-foreground">
                       {getAcademicYear(item.startDate)}
                     </TableCell>
-                    <TableCell>
-                      <div className="flex items-center gap-1 text-sm">
-                        <FileText className="h-4 w-4" />
-                        {item.syllabusCount}
-                      </div>
-                    </TableCell>
-                    <TableCell>{item.entriesCount}</TableCell>
                     <TableCell>
                       <Badge variant={getStatusVariant(item.status)}>
                         {item.status}
